@@ -3,7 +3,7 @@
  * Plugin Name: NotOnFire WordPress Monitor
  * Plugin URI:  https://notonfire.systems
  * Description: Early fatal-error reporting and authenticated WordPress update status for NotOnFire.
- * Version:     0.1.0
+ * Version:     0.1.1
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * License:     GPL-2.0-or-later
@@ -28,7 +28,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 if ( ! class_exists( 'WP_NotOnFire_Monitor', false ) ) {
     final class WP_NotOnFire_Monitor {
 
-        const VERSION = '0.1.0';
+        const VERSION = '0.1.1';
         const OPTION_KEY = 'wp_notonfire_monitor_state';
         const CONFIG_ENDPOINT = '/api/v1/wordpress/error-tracking-config';
         const REST_NAMESPACE = 'cat/v1';
@@ -50,18 +50,27 @@ if ( ! class_exists( 'WP_NotOnFire_Monitor', false ) ) {
 
             register_shutdown_function( [ __CLASS__, 'capture_shutdown_error' ] );
             add_action( 'rest_api_init', [ __CLASS__, 'register_monitoring_route' ] );
-            add_action( 'init', [ __CLASS__, 'maybe_sync_configuration' ], 20 );
+
+            // WordPress loads themes before init. Synchronize while this MU
+            // plugin is loading so a broken theme cannot prevent the first DSN.
+            self::maybe_sync_configuration();
         }
 
         public static function capture_shutdown_error() {
             self::$reserved_memory = '';
 
-            if ( self::$capturing || '' === self::$envelope_endpoint ) {
+            if ( self::$capturing ) {
                 return;
             }
 
             $error = error_get_last();
             if ( ! is_array( $error ) || ! isset( $error['type'] ) || ! self::is_fatal_error_type( (int) $error['type'] ) ) {
+                return;
+            }
+
+            if ( '' === self::$envelope_endpoint ) {
+                self::debug_log( 'Fatal error was not reported because no managed DSN is cached.' );
+
                 return;
             }
 
@@ -91,10 +100,14 @@ if ( ! class_exists( 'WP_NotOnFire_Monitor', false ) ) {
                 return;
             }
 
-            self::send_envelope(
+            $status = self::send_envelope(
                 self::$envelope_endpoint,
                 $envelope_header . "\n" . $item_header . "\n" . $event_json
             );
+
+            if ( $status < 200 || $status >= 300 ) {
+                self::debug_log( 'GlitchTip rejected or did not receive the fatal event (HTTP ' . $status . ').' );
+            }
         }
 
         public static function register_monitoring_route() {
@@ -491,6 +504,7 @@ if ( ! class_exists( 'WP_NotOnFire_Monitor', false ) ) {
         private static function send_envelope( $endpoint, $body ) {
             $headers = [
                 'Content-Type: application/x-sentry-envelope',
+                'X-Sentry-Auth: ' . self::sentry_auth_header(),
                 'User-Agent: WP-NotOnFire/' . self::VERSION,
                 'Content-Length: ' . strlen( $body ),
             ];
@@ -516,9 +530,10 @@ if ( ! class_exists( 'WP_NotOnFire_Monitor', false ) ) {
 
                     curl_setopt_array( $handle, $options );
                     curl_exec( $handle );
+                    $status = (int) curl_getinfo( $handle, CURLINFO_RESPONSE_CODE );
                     curl_close( $handle );
 
-                    return;
+                    return $status;
                 }
             }
 
@@ -538,6 +553,40 @@ if ( ! class_exists( 'WP_NotOnFire_Monitor', false ) ) {
             ] );
 
             @file_get_contents( $endpoint, false, $context );
+
+            if ( function_exists( 'http_get_last_response_headers' ) ) {
+                $response_headers = http_get_last_response_headers();
+            } else {
+                $defined_variables = get_defined_vars();
+                $response_headers = isset( $defined_variables['http_response_header'] ) && is_array( $defined_variables['http_response_header'] )
+                    ? $defined_variables['http_response_header']
+                    : [];
+            }
+
+            if ( is_array( $response_headers ) ) {
+                foreach ( array_reverse( $response_headers ) as $header ) {
+                    if ( preg_match( '/^HTTP\/\S+\s+(\d{3})\b/i', $header, $matches ) ) {
+                        return (int) $matches[1];
+                    }
+                }
+            }
+
+            return 0;
+        }
+
+        private static function sentry_auth_header() {
+            $parts = parse_url( self::$dsn );
+            $public_key = is_array( $parts ) && isset( $parts['user'] )
+                ? rawurldecode( (string) $parts['user'] )
+                : '';
+
+            return 'Sentry sentry_version=7, sentry_key=' . $public_key . ', sentry_client=wp-notonfire/' . self::VERSION;
+        }
+
+        private static function debug_log( $message ) {
+            if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+                error_log( '[WP NotOnFire] ' . $message );
+            }
         }
 
         private static function environment() {
