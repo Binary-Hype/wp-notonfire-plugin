@@ -3,7 +3,7 @@
  * Plugin Name: NotOnFire WordPress Monitor
  * Plugin URI:  https://notonfire.systems
  * Description: Early fatal-error reporting and authenticated WordPress update status for NotOnFire.
- * Version:     0.1.1
+ * Version:     0.2.0
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * License:     GPL-2.0-or-later
@@ -28,10 +28,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 if ( ! class_exists( 'WP_NotOnFire_Monitor', false ) ) {
     final class WP_NotOnFire_Monitor {
 
-        const VERSION = '0.1.1';
+        const VERSION = '0.2.0';
         const OPTION_KEY = 'wp_notonfire_monitor_state';
         const CONFIG_ENDPOINT = '/api/v1/wordpress/error-tracking-config';
-        const REST_NAMESPACE = 'cat/v1';
+        const REST_NAMESPACE = 'notonfire/v1';
         const REST_ROUTE = '/monitoring';
         const CONFIG_SYNC_INTERVAL = 21600;
         const CONFIG_RETRY_INTERVAL = 300;
@@ -121,10 +121,10 @@ if ( ! class_exists( 'WP_NotOnFire_Monitor', false ) ) {
         public static function authorize_monitoring_request( WP_REST_Request $request ) {
             $site_id = self::site_id();
             $site_token = self::site_token();
-            $request_site_id = $request->get_header( 'X-CA-Site-ID' );
-            $timestamp = $request->get_header( 'X-CA-Timestamp' );
-            $nonce = $request->get_header( 'X-CA-Nonce' );
-            $signature = $request->get_header( 'X-CA-Signature' );
+            $request_site_id = $request->get_header( 'X-NotOnFire-Site-ID' );
+            $timestamp = $request->get_header( 'X-NotOnFire-Timestamp' );
+            $nonce = $request->get_header( 'X-NotOnFire-Nonce' );
+            $signature = $request->get_header( 'X-NotOnFire-Signature' );
 
             if ( $site_id <= 0 || '' === $site_token
                 || ! is_string( $request_site_id ) || ! ctype_digit( $request_site_id )
@@ -292,10 +292,10 @@ if ( ! class_exists( 'WP_NotOnFire_Monitor', false ) ) {
                 'sslverify' => true,
                 'headers' => [
                     'Accept' => 'application/json',
-                    'X-CA-Site-ID' => (string) self::site_id(),
-                    'X-CA-Timestamp' => $timestamp,
-                    'X-CA-Nonce' => $nonce,
-                    'X-CA-Signature' => $signature,
+                    'X-NotOnFire-Site-ID' => (string) self::site_id(),
+                    'X-NotOnFire-Timestamp' => $timestamp,
+                    'X-NotOnFire-Nonce' => $nonce,
+                    'X-NotOnFire-Signature' => $signature,
                     'User-Agent' => 'WP-NotOnFire/' . self::VERSION,
                 ],
             ] );
