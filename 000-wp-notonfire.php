@@ -11,9 +11,13 @@
  * Install this file as:
  * wp-content/mu-plugins/000-wp-notonfire.php
  *
- * Add the following values to wp-config.php before WordPress is loaded:
+ * The NotOnFire dashboard offers this file as a download with the site
+ * credentials already written into the block below, so a plain upload is
+ * enough. Configuring it by hand works as well: define the same constants in
+ * wp-config.php before WordPress is loaded, or export them as environment
+ * variables.
  *
- * define( 'WP_NOTONFIRE_SERVER_URL', 'https://notonfire.systems' );
+ * define( 'WP_NOTONFIRE_SERVER_URL', 'https://dashboard.example' );
  * define( 'WP_NOTONFIRE_SITE_ID', 12345 );
  * define( 'WP_NOTONFIRE_SITE_TOKEN', 'replace-with-the-site-token' );
  *
@@ -24,6 +28,11 @@
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
+
+/* NotOnFire credentials: begin */
+/* The dashboard download replaces this block. Left empty the plugin reads the
+   same constants from wp-config.php or the environment instead. */
+/* NotOnFire credentials: end */
 
 if ( ! class_exists( 'WP_NotOnFire_Monitor', false ) ) {
     final class WP_NotOnFire_Monitor {
